@@ -1,11 +1,10 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {AlertTriangle, Calendar, Clock, ExternalLink} from 'lucide-react';
-import {useGoogleCalendar} from '../context/GoogleCalendarContext';
+import {AlertTriangle, Calendar, Clock, Download, ExternalLink} from 'lucide-react';
 import {useStore} from '../context/StoreContext';
 import {RegistroPonto} from '../types';
 import {calcRegistro, detectOverlap, isTrocaLocal} from '../utils/calc';
 import {agoraHHMM, formatCurrencyBRL, formatHours, hojeISO} from '../utils/format';
-import {GoogleSignInButton} from './GoogleSignInButton';
+import {buildCalendarICS, buildGoogleCalendarUrl, downloadICS} from '../utils/googleCalendar';
 import {Field, Modal} from './UI';
 
 interface RegistroModalProps {
@@ -24,7 +23,6 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
   defaultLocalId,
 }) => {
   const {locais, registros, config, adicionarRegistro, editarRegistro, toast} = useStore();
-  const gcal = useGoogleCalendar();
 
   const selectableLocais = useMemo(
     () =>
@@ -42,7 +40,6 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
   const [feriado, setFeriado] = useState(false);
   const [valorHora, setValorHora] = useState('');
   const [agendado, setAgendado] = useState(false);
-  const [syncGoogle, setSyncGoogle] = useState(false);
   const [obs, setObs] = useState('');
 
   useEffect(() => {
@@ -55,7 +52,6 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
       setPausaMin(String(registro.pausa_min ?? 0));
       setFeriado(!!registro.feriado);
       setAgendado(!!registro.agendado);
-      setSyncGoogle(!!registro.googleEventId || (!!registro.agendado && gcal.connected));
       setValorHora(
         registro.valor_hora !== undefined && registro.valor_hora !== ''
           ? String(registro.valor_hora)
@@ -68,19 +64,17 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
           ? defaultLocalId
           : selectableLocais[0]?.id || '';
       const targetDate = defaultData || hojeISO();
-      const isFuture = targetDate > hojeISO();
       setLocalId(initialId);
       setData(targetDate);
       setEntrada('08:00');
       setSaida('17:00');
       setPausaMin('60');
       setFeriado(false);
-      setAgendado(isFuture);
-      setSyncGoogle(gcal.connected);
+      setAgendado(targetDate > hojeISO());
       setValorHora('');
       setObs('');
     }
-  }, [open, registro, defaultData, defaultLocalId, selectableLocais, gcal.connected]);
+  }, [open, registro, defaultData, defaultLocalId, selectableLocais]);
 
   const selectedLocal = useMemo(
     () => selectableLocais.find((l) => l.id === localId) || null,
@@ -137,22 +131,14 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
       obs: obs.trim(),
     };
 
-    let savedReg: RegistroPonto;
     if (registro) {
       editarRegistro(registro.id, payload);
-      savedReg = {...registro, ...payload};
       toast('Registro atualizado.');
     } else {
-      savedReg = adicionarRegistro(payload);
+      adicionarRegistro(payload);
       toast('Registro salvo.');
     }
     onClose();
-
-    if (agendado && syncGoogle) {
-      gcal.syncSingleShift(savedReg);
-    } else if (registro?.googleEventId && !agendado) {
-      gcal.removeShiftEvent(savedReg, true);
-    }
   };
 
   return (
@@ -290,11 +276,7 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
             <input
               type="checkbox"
               checked={agendado}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setAgendado(checked);
-                if (checked && gcal.connected) setSyncGoogle(true);
-              }}
+              onChange={(e) => setAgendado(e.target.checked)}
               className="h-4 w-4 accent-[var(--accent)]"
             />
             <span>
@@ -303,70 +285,53 @@ export const RegistroModal: React.FC<RegistroModalProps> = ({
           </label>
         </div>
 
-        {(agendado || registro?.googleEventId) && (
-          <div className="space-y-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 font-bold text-[var(--text)]">
+        {agendado && data && entrada && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-xs">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1.5 font-bold text-[var(--text)]">
                 <Calendar className="h-4 w-4 text-[var(--accent)]" />
-                <span>Google Calendar</span>
+                <span>Adicionar à agenda (grátis)</span>
               </div>
-              {registro?.googleEventId && (
-                <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-[var(--ok-soft)] px-2 py-0.5 font-semibold text-[var(--ok)]">
-                    Sincronizado
-                  </span>
-                  {registro.googleEventLink && (
-                    <a
-                      href={registro.googleEventLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-semibold text-[var(--accent)] hover:underline"
-                    >
-                      Abrir <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {agendado ? (
-              <>
-                {gcal.connected ? (
-                  <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium">
-                    <input
-                      type="checkbox"
-                      checked={syncGoogle}
-                      onChange={(e) => setSyncGoogle(e.target.checked)}
-                      className="h-4 w-4 accent-[var(--accent)]"
-                    />
-                    <span>
-                      {registro?.googleEventId
-                        ? 'Atualizar evento no Google Calendar ao salvar'
-                        : 'Enviar evento para o Google Calendar ao salvar'}
-                    </span>
-                  </label>
-                ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[var(--muted)]">
-                      Conecte sua conta Google para enviar este plantão para sua agenda.
-                    </span>
-                    <GoogleSignInButton
-                      compact
-                      disabled={gcal.isLoggingIn}
-                      onClick={async () => {
-                        const ok = await gcal.connect();
-                        if (ok) setSyncGoogle(true);
-                      }}
-                      label={gcal.isLoggingIn ? 'Conectando...' : 'Conectar com o Google'}
-                    />
-                  </div>
-                )}
-              </>
-            ) : (
               <p className="text-[var(--muted)]">
-                Ao desmarcar como agendado e salvar, perguntaremos se deseja remover o evento do Google Calendar.
+                Abre no Google Agenda preenchido ou baixa arquivo .ics para o celular.
               </p>
-            )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={buildGoogleCalendarUrl(previewCandidate, selectedLocal, config)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-soft min-h-[36px] px-3 py-1.5 text-xs"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Google Agenda
+              </a>
+              <button
+                type="button"
+                className="btn btn-ghost min-h-[36px] px-3 py-1.5 text-xs"
+                onClick={() => {
+                  const tempReg: RegistroPonto = {
+                    id: registro?.id || `preview-${Date.now()}`,
+                    localId,
+                    data,
+                    entrada,
+                    saida,
+                    pausa_min: Math.max(0, Number(pausaMin) || 0),
+                    feriado,
+                    agendado: true,
+                    troca_plantao: '',
+                    valor_hora: valorHora !== '' ? Number(valorHora) : undefined,
+                    obs: obs.trim(),
+                  };
+                  const ics = buildCalendarICS([tempReg], locais, config);
+                  downloadICS(ics, `plantao-${data}.ics`);
+                  toast('Arquivo .ics baixado!');
+                }}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Baixar .ics
+              </button>
+            </div>
           </div>
         )}
 

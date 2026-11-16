@@ -1,6 +1,5 @@
 import {HashRouter, Navigate, Route, Routes} from 'react-router-dom';
 import {Layout} from './components/Layout';
-import {GoogleCalendarProvider} from './context/GoogleCalendarContext';
 import {StoreProvider} from './context/StoreContext';
 import {Aparencia} from './pages/Aparencia';
 import {Assistente} from './pages/Assistente';
@@ -15,8 +14,7 @@ export default function App() {
   return (
     <HashRouter>
       <StoreProvider>
-        <GoogleCalendarProvider>
-          <Layout>
+        <Layout>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -29,8 +27,7 @@ export default function App() {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-          </Layout>
-        </GoogleCalendarProvider>
+        </Layout>
       </StoreProvider>
     </HashRouter>
   );

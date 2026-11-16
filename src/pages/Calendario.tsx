@@ -4,17 +4,14 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   Edit3,
   ExternalLink,
-  LogOut,
   Plus,
-  RefreshCw,
   Trash2,
 } from 'lucide-react';
-import {GoogleSignInButton} from '../components/GoogleSignInButton';
 import {RegistroModal} from '../components/RegistroModal';
 import {ConfirmDialog, Modal} from '../components/UI';
-import {useGoogleCalendar} from '../context/GoogleCalendarContext';
 import {useStore} from '../context/StoreContext';
 import {RegistroPonto} from '../types';
 import {calcRegistro, filterByMonth, findLocal, isTrocaLocal, summarizeRegistros} from '../utils/calc';
@@ -29,10 +26,10 @@ import {
   mesAtualRef,
   pad2,
 } from '../utils/format';
+import {buildCalendarICS, buildGoogleCalendarUrl, downloadICS} from '../utils/googleCalendar';
 
 export const Calendario: React.FC = () => {
   const {locais, registros, config, editarRegistro, excluirRegistro, toast} = useStore();
-  const gcal = useGoogleCalendar();
   const [mesRef, setMesRef] = useState(mesAtualRef);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -162,59 +159,36 @@ export const Calendario: React.FC = () => {
         </span>
       </div>
 
-      {/* Google Calendar sync bar */}
+      {/* Free Google Calendar / ICS export bar */}
       <div className="card card-pad flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2.5">
           <Calendar className="h-4 w-4 shrink-0 text-[var(--accent)]" />
           <div>
-            <div className="font-bold text-[var(--text)]">Google Calendar</div>
+            <div className="font-bold text-[var(--text)]">Exportar para Google Agenda / Celular</div>
             <div className="text-[var(--muted)]">
-              {gcal.connected
-                ? `Conectado: ${gcal.user?.email || 'conta Google'}`
-                : 'Conecte sua conta para sincronizar plantões agendados.'}
+              Gratuito e sem conta paga: baixe a escala em .ics ou abra cada plantão direto no Google Agenda.
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {gcal.connected ? (
-            <>
-              <button
-                type="button"
-                className="btn btn-soft min-h-[36px] px-3 py-1.5 text-xs"
-                onClick={() => {
-                  const list = regsAgendadosMes.length
-                    ? regsAgendadosMes
-                    : regularRegistros.filter((r) => !!r.agendado && r.data >= hoje);
-                  gcal.syncScheduledList(
-                    list,
-                    regsAgendadosMes.length
-                      ? `Sincronizar ${regsAgendadosMes.length} plantão(ões) agendado(s) do mês?`
-                      : 'Sincronizar próximos plantões agendados?',
-                  );
-                }}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Sincronizar agendados ({regsAgendadosMes.length || regularRegistros.filter((r) => !!r.agendado && r.data >= hoje).length})
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost min-h-[36px] px-3 py-1.5 text-xs"
-                onClick={() => void gcal.disconnect()}
-                title="Desconectar conta Google"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Desconectar
-              </button>
-            </>
-          ) : (
-            <GoogleSignInButton
-              compact
-              disabled={gcal.isLoggingIn}
-              onClick={() => void gcal.connect()}
-              label={gcal.isLoggingIn ? 'Conectando...' : 'Conectar com o Google'}
-            />
-          )}
-        </div>
+        <button
+          type="button"
+          className="btn btn-soft min-h-[36px] px-3 py-1.5 text-xs"
+          onClick={() => {
+            const list = regsAgendadosMes.length
+              ? regsAgendadosMes
+              : regularRegistros.filter((r) => !!r.agendado && r.data >= hoje);
+            if (!list.length) {
+              toast('Nenhum plantão agendado para exportar.', 'erro');
+              return;
+            }
+            const ics = buildCalendarICS(list, locais, config);
+            downloadICS(ics, `plantoes-agendados-${mesRef}.ics`);
+            toast(`${list.length} plantão(ões) exportado(s) em .ics! Abra o arquivo para importar na sua agenda.`);
+          }}
+        >
+          <Download className="h-3.5 w-3.5" />
+          Baixar agendados (.ics) ({regsAgendadosMes.length || regularRegistros.filter((r) => !!r.agendado && r.data >= hoje).length})
+        </button>
       </div>
 
       {/* Calendar grid */}
@@ -355,11 +329,6 @@ export const Calendario: React.FC = () => {
                           Agendado
                         </span>
                       )}
-                      {r.googleEventId && (
-                        <span className="rounded-md bg-[var(--ok-soft)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--ok)]">
-                          Google Agenda
-                        </span>
-                      )}
                     </div>
                     <div className="mt-0.5 text-xs text-[var(--muted)] tabular-nums">
                       {r.entrada}–{r.saida || 'aberto'}
@@ -369,16 +338,6 @@ export const Calendario: React.FC = () => {
                       {r.feriado ? ' · Feriado' : ''}
                     </div>
                     {r.obs && <div className="mt-1 text-xs text-[var(--muted)]">{r.obs}</div>}
-                    {r.googleEventLink && (
-                      <a
-                        href={r.googleEventLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] hover:underline"
-                      >
-                        Ver no Google Calendar <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     {!calc.aberto && !calc.troca && (
@@ -387,19 +346,16 @@ export const Calendario: React.FC = () => {
                       </span>
                     )}
                     {r.agendado && (
-                      <button
-                        type="button"
-                        onClick={() => gcal.syncSingleShift(r)}
-                        title={
-                          r.googleEventId
-                            ? 'Atualizar evento no Google Calendar'
-                            : 'Enviar para o Google Calendar'
-                        }
-                        aria-label="Sincronizar com Google Calendar"
+                      <a
+                        href={buildGoogleCalendarUrl(r, loc, config)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Adicionar ao Google Agenda"
+                        aria-label="Adicionar ao Google Agenda"
                         className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--accent)] hover:bg-[var(--accent-soft)]"
                       >
-                        <Calendar className="h-4 w-4" />
-                      </button>
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
                     )}
                     {r.agendado && (
                       <button
@@ -458,18 +414,14 @@ export const Calendario: React.FC = () => {
         title="Excluir registro?"
         body={
           deleteTarget
-            ? `Excluir o turno de ${formatDateBR(deleteTarget.data)} (${deleteTarget.entrada}–${deleteTarget.saida || 'aberto'})?${deleteTarget.googleEventId ? ' Se quiser, você também poderá remover o evento do Google Calendar em seguida.' : ''}`
+            ? `Excluir o turno de ${formatDateBR(deleteTarget.data)} (${deleteTarget.entrada}–${deleteTarget.saida || 'aberto'})?`
             : ''
         }
         confirmLabel="Excluir"
         onConfirm={() => {
           if (deleteTarget) {
-            const toDelete = deleteTarget;
-            excluirRegistro(toDelete.id);
+            excluirRegistro(deleteTarget.id);
             toast('Registro excluído.');
-            if (toDelete.googleEventId) {
-              gcal.removeShiftEvent(toDelete, false);
-            }
           }
         }}
       />

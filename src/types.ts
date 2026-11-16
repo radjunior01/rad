@@ -62,8 +62,6 @@ export interface RegistroPonto {
   horas_ressarcidas?: number | '';
   valor_hora?: number | '';
   agendado?: boolean;
-  googleEventId?: string;
-  googleEventLink?: string;
   obs: string;
   lat?: number;
   lng?: number;

@@ -6,7 +6,6 @@ import {
   Cloud,
   Copy,
   Download,
-  LogOut,
   Palette,
   RefreshCw,
   SlidersHorizontal,
@@ -15,10 +14,8 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import {GoogleSignInButton} from '../components/GoogleSignInButton';
 import {SignaturePad} from '../components/SignaturePad';
 import {ConfirmDialog, Field, Modal} from '../components/UI';
-import {useGoogleCalendar} from '../context/GoogleCalendarContext';
 import {useStore} from '../context/StoreContext';
 import {usePWAInstall} from '../hooks/usePWAInstall';
 import {
@@ -27,6 +24,7 @@ import {
   fetchAvailableModels,
   getAIProvider,
 } from '../utils/assistant';
+import {buildCalendarICS, downloadICS} from '../utils/googleCalendar';
 import {parseImportFile, ParseImportResult} from '../utils/importer';
 import {exportBackupJSON} from '../utils/storage';
 import {
@@ -58,7 +56,6 @@ export const Configuracoes: React.FC = () => {
     apagarTudo,
     toast,
   } = useStore();
-  const gcal = useGoogleCalendar();
   const {
     instalado,
     podeInstalar,
@@ -514,48 +511,29 @@ export const Configuracoes: React.FC = () => {
               <div>
                 <h3 className="flex items-center gap-2 text-base font-bold">
                   <Calendar className="h-5 w-5 text-[var(--accent)]" />
-                  Google Calendar (Plantões agendados)
+                  Agenda gratuita (Google Agenda / .ics)
                 </h3>
                 <p className="text-xs text-[var(--muted)]">
-                  {gcal.connected
-                    ? `Conectado como ${gcal.user?.email || 'conta Google'}. Plantões agendados podem ser enviados para sua agenda.`
-                    : 'Conecte sua conta Google para criar e atualizar eventos de plantões agendados no Google Calendar.'}
+                  Exporte todos os plantões agendados em arquivo .ics para importar de graça no Google Agenda ou calendário do celular.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {gcal.connected ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn-soft text-xs"
-                      onClick={() => {
-                        const scheduled = db.registros.filter((r) => !!r.agendado);
-                        gcal.syncScheduledList(
-                          scheduled,
-                          `Sincronizar ${scheduled.length} plantão(ões) agendado(s) com o Google Calendar?`,
-                        );
-                      }}
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Sincronizar agendados ({db.registros.filter((r) => !!r.agendado).length})
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost text-xs"
-                      onClick={() => void gcal.disconnect()}
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Desconectar
-                    </button>
-                  </>
-                ) : (
-                  <GoogleSignInButton
-                    disabled={gcal.isLoggingIn}
-                    onClick={() => void gcal.connect()}
-                    label={gcal.isLoggingIn ? 'Conectando...' : 'Conectar com o Google'}
-                  />
-                )}
-              </div>
+              <button
+                type="button"
+                className="btn btn-soft text-xs"
+                onClick={() => {
+                  const scheduled = db.registros.filter((r) => !!r.agendado);
+                  if (!scheduled.length) {
+                    toast('Nenhum plantão agendado cadastrado.', 'erro');
+                    return;
+                  }
+                  const ics = buildCalendarICS(scheduled, db.locais, config);
+                  downloadICS(ics, 'plantoes-agendados-rad-tunopay.ics');
+                  toast(`${scheduled.length} plantão(ões) exportado(s) em .ics!`);
+                }}
+              >
+                <Download className="h-4 w-4" />
+                Baixar agendados (.ics) ({db.registros.filter((r) => !!r.agendado).length})
+              </button>
             </div>
           </section>
 
@@ -599,13 +577,13 @@ export const Configuracoes: React.FC = () => {
                   placeholder="https://xxxx.supabase.co"
                 />
               </Field>
-              <Field label="Anon Key">
+              <Field label="Anon / Publishable Key">
                 <input
                   type="password"
                   className="input font-mono text-xs"
                   value={config.syncKey}
                   onChange={(e) => patchConfig({syncKey: e.target.value})}
-                  placeholder="eyJhbGci..."
+                  placeholder="eyJhbGci... ou sb_publishable_..."
                 />
               </Field>
             </div>

@@ -2,12 +2,12 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Link, useSearchParams} from 'react-router-dom';
 import {
   AlertTriangle,
-  Calendar,
   CalendarClock,
   CheckCircle2,
   Coffee,
   Download,
   Edit3,
+  ExternalLink,
   MapPin,
   Navigation,
   Play,
@@ -27,7 +27,6 @@ import {
 } from 'recharts';
 import {RegistroModal} from '../components/RegistroModal';
 import {ConfirmDialog, EmptyState, Modal, ProgressBar, StatCard} from '../components/UI';
-import {useGoogleCalendar} from '../context/GoogleCalendarContext';
 import {useStore} from '../context/StoreContext';
 import {usePWAInstall} from '../hooks/usePWAInstall';
 import {RegistroPonto} from '../types';
@@ -52,6 +51,7 @@ import {
   hojeISO,
   mesAtualRef,
 } from '../utils/format';
+import {buildGoogleCalendarUrl} from '../utils/googleCalendar';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -64,7 +64,6 @@ export const Dashboard: React.FC = () => {
     carregarExemplo,
     toast,
   } = useStore();
-  const gcal = useGoogleCalendar();
   const {instalado, podeInstalar, ios, instalar} = usePWAInstall();
   const [searchParams, setSearchParams] = useSearchParams();
   const autoPunchRef = useRef(false);
@@ -603,11 +602,6 @@ export const Dashboard: React.FC = () => {
                         style={{background: loc?.cor || 'var(--muted)'}}
                       />
                       <span className="truncate">{loc?.nome || 'Local'}</span>
-                      {r.googleEventId && (
-                        <span className="rounded bg-[var(--ok-soft)] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[var(--ok)]">
-                          Google Agenda
-                        </span>
-                      )}
                     </div>
                     <div className="mt-0.5 text-[var(--muted)] tabular-nums">
                       {formatDateBR(r.data)} · {r.entrada}–{r.saida || '—'} ·{' '}
@@ -615,19 +609,16 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
+                    <a
+                      href={buildGoogleCalendarUrl(r, loc, config)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                      title={
-                        r.googleEventId
-                          ? 'Atualizar no Google Calendar'
-                          : 'Enviar para o Google Calendar'
-                      }
-                      aria-label="Sincronizar com Google Calendar"
-                      onClick={() => gcal.syncSingleShift(r)}
+                      title="Adicionar ao Google Agenda"
+                      aria-label="Adicionar ao Google Agenda"
                     >
-                      <Calendar className="h-3.5 w-3.5" />
-                    </button>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                     <button
                       type="button"
                       className="btn btn-soft min-h-[32px] px-2.5 py-1 text-[11px]"
@@ -853,18 +844,14 @@ export const Dashboard: React.FC = () => {
         title="Excluir registro?"
         body={
           deleteTarget
-            ? `Tem certeza que deseja excluir o registro de ${formatDateBR(deleteTarget.data)} (${deleteTarget.entrada}–${deleteTarget.saida || 'aberto'})?${deleteTarget.googleEventId ? ' Se quiser, você também poderá remover o evento do Google Calendar em seguida.' : ''}`
+            ? `Tem certeza que deseja excluir o registro de ${formatDateBR(deleteTarget.data)} (${deleteTarget.entrada}–${deleteTarget.saida || 'aberto'})?`
             : ''
         }
         confirmLabel="Excluir"
         onConfirm={() => {
           if (deleteTarget) {
-            const toDelete = deleteTarget;
-            excluirRegistro(toDelete.id);
+            excluirRegistro(deleteTarget.id);
             toast('Registro excluído.');
-            if (toDelete.googleEventId) {
-              gcal.removeShiftEvent(toDelete, false);
-            }
           }
         }}
       />

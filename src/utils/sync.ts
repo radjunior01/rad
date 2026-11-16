@@ -55,15 +55,23 @@ export function isSyncConfigured(cfg?: Partial<AppConfig> | null): boolean {
 }
 
 function baseUrl(cfg: Partial<AppConfig>): string {
-  return String(cfg.syncUrl || '').trim().replace(/\/+$/, '');
+  return String(cfg.syncUrl || '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/rest\/v1$/i, '')
+    .replace(/\/+$/, '');
 }
 
 function headers(cfg: Partial<AppConfig>) {
-  return {
+  const key = String(cfg.syncKey || '').trim();
+  const h: Record<string, string> = {
     'Content-Type': 'application/json',
-    apikey: cfg.syncKey || '',
-    Authorization: `Bearer ${cfg.syncKey || ''}`,
+    apikey: key,
   };
+  if (key && !key.startsWith('sb_publishable_')) {
+    h.Authorization = `Bearer ${key}`;
+  }
+  return h;
 }
 
 async function parseSupabaseError(res: Response): Promise<Error> {
@@ -75,11 +83,14 @@ async function parseSupabaseError(res: Response): Promise<Error> {
   } catch {
     // keep raw text
   }
+  const invalidPath = /invalid path specified/i.test(detail);
   const extra =
     res.status === 401 || res.status === 403
       ? ' Chave (anon) inválida ou RLS bloqueando a tabela — rode o SQL de configuração.'
       : res.status === 404
-        ? ' Tabela horas_sync não encontrada — rode o SQL de configuração.'
+        ? invalidPath
+          ? ' Verifique a Project URL: use apenas https://seu-projeto.supabase.co (sem /rest/v1 no final).'
+          : ' Tabela horas_sync não encontrada — rode o SQL de configuração.'
         : '';
   return new Error(`Supabase respondeu ${res.status}. ${detail}${extra}`);
 }

@@ -360,8 +360,6 @@ function normalizeRegistro(
     pausa_min: pausaMin,
     feriado: parseBool(pick(raw, 'feriado', 'holiday', 'isHoliday')),
     agendado: parseBool(pick(raw, 'agendado', 'scheduled')),
-    googleEventId: asStr(pick(raw, 'googleEventId', 'google_event_id')) || undefined,
-    googleEventLink: asStr(pick(raw, 'googleEventLink', 'google_event_link')) || undefined,
     troca_plantao,
     valor_hora: parseNumber(pick(raw, 'valor_hora', 'valorHora', 'valor_hora_registro', 'rate', 'hourlyRate')),
     obs,
