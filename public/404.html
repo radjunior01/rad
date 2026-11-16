@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Controle de Horas</title>
+    <script>
+      (function () {
+        var path = window.location.pathname;
+        var hash = window.location.hash || '#/dashboard';
+        var base = path.replace(/\/(dashboard|locais|calendario|trocas|totais|assistente|aparencia)\/?$/, '/');
+        if (!base.endsWith('/')) base += '/';
+        window.location.replace(base + hash);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

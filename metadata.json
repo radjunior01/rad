@@ -1,0 +1,10 @@
+{
+  "name": "Controle de Horas",
+  "description": "Aplicação para registro e acompanhamento de horas e locais de trabalho.\n\nCriado por:\nCelio Junior (radJunior)",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
